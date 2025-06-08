@@ -3,7 +3,6 @@ package com.example.lessgame.ui.screens
 import android.annotation.SuppressLint
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,12 +22,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import com.example.lessgame.data.datastore.DataStoreManager
+import com.example.lessgame.data.local.entity.Partida
+import com.example.lessgame.data.repository.PartidaRepository
 import com.example.lessgame.domain.Coordinate
 import com.example.lessgame.domain.Player
 import com.example.lessgame.navigation.NavDest
 import com.example.lessgame.ui.viewmodel.LessGameViewModel
 import com.example.lessgame.ui.viewmodel.MoveResult
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlin.math.min
 
 enum class BorderSide { Left, Top, Right, Bottom }
@@ -51,20 +55,38 @@ private fun Modifier.borderSides(width: Dp, color: Color, sides: List<BorderSide
  *  Permite seleccionar origen y destino, y muestra toasts en caso de movimiento inválido o exceso de coste.
  */
 @SuppressLint("UnusedBoxWithConstraintsScope")
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameScreen(
     nav: NavHostController,
     vm: LessGameViewModel
 ) {
     val context = LocalContext.current
+    val repo    = PartidaRepository(context)
+    val scope   = rememberCoroutineScope()
+
     val version by remember { vm::boardVersion }
-    val pieces by remember(version) { derivedStateOf { vm.board.allPieces() } }
-    val finished = vm.handle.get<Boolean>("FINISHED") == true
-    val timeUp = vm.millisLeft != null && vm.millisLeft!! <= 0L
+    val pieces  by remember(version) { derivedStateOf { vm.board.allPieces() } }
+    val finished = vm.isFinished
+    val timeUp   = (vm.millisLeft ?: Long.MAX_VALUE) <= 0L
 
     LaunchedEffect(finished, timeUp) {
         if (finished || timeUp) {
+            //guarda la partida
+            val alias = DataStoreManager.getAlias(context).first()
+            scope.launch {
+                repo.save(
+                    Partida(
+                        alias        = alias,
+                        playerCount  = vm.playerCount,
+                        timed        = (vm.millisLeft != null),
+                        winner       = vm.winner?.name,
+                        isDraw       = vm.isDraw,
+                        log          = vm.logText
+                    )
+                )
+            }
+            //reatardo para que se guarde la partida antes de navegar
             delay(350)
             nav.navigate(NavDest.Result.route) {
                 popUpTo(NavDest.Menu.route) { inclusive = false }

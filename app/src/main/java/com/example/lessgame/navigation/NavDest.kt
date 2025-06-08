@@ -1,10 +1,11 @@
 package com.example.lessgame.navigation
 
-/** Rutas de navegación */
+/** Rutas de navegación del app */
 enum class NavDest(val route: String) {
-    Menu    ("menu"),        // pantalla inicial
-    Config  ("config"),
-    Game    ("game"),
-    Result  ("result"),
-    Help    ("help")
+    Menu       ("menu"),
+    Config     ("config"),
+    Game       ("game"),
+    Result     ("result"),
+    Help       ("help"),
+    Partidas   ("partidas"),
 }

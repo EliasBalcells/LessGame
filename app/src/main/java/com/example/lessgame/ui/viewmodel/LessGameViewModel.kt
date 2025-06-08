@@ -1,13 +1,22 @@
 package com.example.lessgame.ui.viewmodel
 
+import android.app.Application
 import android.os.CountDownTimer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.ViewModel
-import com.example.lessgame.domain.*
+import androidx.lifecycle.viewModelScope
+import com.example.lessgame.data.datastore.DataStoreManager
+import com.example.lessgame.domain.Coordinate
+import com.example.lessgame.domain.GameBoard
+import com.example.lessgame.domain.Player
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.time.LocalDateTime
 import kotlin.math.abs
 import kotlin.random.Random
@@ -15,10 +24,14 @@ import kotlin.random.Random
 enum class MoveResult { SUCCESS, INVALID, OVERBUDGET }
 
 class LessGameViewModel(
+    application: Application,
     private val saved: SavedStateHandle
-) : ViewModel() {
+) : AndroidViewModel(application) {
 
-    val handle: SavedStateHandle get() = saved
+    private val appContext = application
+
+    // —————————————————————————————————————————————————————————————————
+    // Estado de juego
     var board by mutableStateOf(GameBoard.initial()); private set
     var boardVersion by mutableIntStateOf(0); private set
     var playerCount by mutableIntStateOf(2); private set
@@ -27,24 +40,43 @@ class LessGameViewModel(
     var winner by mutableStateOf<Player?>(null); private set
     var isDraw by mutableStateOf(false); private set
 
+    /** Indica si la partida ha terminado por victoria o empate */
+    val isFinished: Boolean
+        get() = (winner != null) || isDraw
+
     private var partialMoves = 0
-    private val log = StringBuilder()
     private var timer: CountDownTimer? = null
+    private val _playLog = MutableStateFlow<List<String>>(emptyList())
+    val playLog: StateFlow<List<String>> = _playLog
+
+    /** Texto completo del log, útil para la pantalla de resultado */
+    val logText: String
+        get() = _playLog.value.joinToString(separator = "\n")
 
     init {
-        configure()
+        viewModelScope.launch {
+            // Carga los ajustes guardados (o valores por defecto)
+            val numPlayers = DataStoreManager.getPlayerCount(appContext).first()
+            val timed      = DataStoreManager.getTimed(appContext).first()
+            val seconds    = DataStoreManager.getSeconds(appContext).first()
+            // Aplica la configuración y arranca la partida
+            configure(numPlayers, timed, seconds)
+        }
     }
 
     /**
      * Configura una nueva partida:
-     * Reinicia tablero, contador y turnos
-     * Establece número de jugadores, temporizador y limpia resultados anteriores
+     * - Reinicia el _playLog_ para arrancar limpio
+     * - Reinicia tablero, temporizador y turnos
+     * - Escritura de la línea inicial
      */
     fun configure(
         numPlayers: Int = 2,
         timed: Boolean = false,
-        seconds: Int = 60
+        seconds: Int? = 60
     ) {
+        _playLog.value = emptyList()
+        _playLog.value = listOf("Inicio ${LocalDateTime.now()} – $numPlayers jugadores")
         playerCount = numPlayers
         board = GameBoard.initial()
         boardVersion++
@@ -52,17 +84,12 @@ class LessGameViewModel(
         partialMoves = 0
         saved["FINISHED"] = false
         saved["TIME"] = false
-        log.clear()
-        log.appendLine("Inicio ${LocalDateTime.now()} – $numPlayers jugadores")
-        if (timed) {
-            millisLeft = seconds * 1_000L
-            startTimer(seconds)
-        } else {
-            timer?.cancel()
-            millisLeft = null
-        }
+        timer?.cancel()
+        millisLeft = if (timed) seconds!! * 1_000L else null
         winner = null
         isDraw = false
+
+        if (timed) startTimer(seconds!!)
     }
 
     private fun startTimer(seconds: Int) {
@@ -90,7 +117,7 @@ class LessGameViewModel(
         board.movePiece(piece, to)
         boardVersion++
         partialMoves += cost
-        log.appendLine("Humano: $from → $to ($cost)")
+        recordLog("Humano: $from → $to ($cost)")
 
         if (board.hasAllInGoal(Player.White)) {
             finishByGoal()
@@ -107,7 +134,7 @@ class LessGameViewModel(
         iaTurn()
     }
 
-    /** Turno de la IA (Black): Usa la heuristica */
+    /** Turno de la IA (Black): usa la heurística */
     private fun iaTurn() {
         var spent = 0
         while (spent < 3) {
@@ -115,7 +142,7 @@ class LessGameViewModel(
             board.movePiece(move.piece, move.dest)
             boardVersion++
             spent += move.cost
-            log.appendLine("IA: ${move.piece.coordinate} → ${move.dest} (${move.cost})")
+            recordLog("IA: ${move.piece.coordinate} → ${move.dest} (${move.cost})")
             if (board.hasAllInGoal(Player.Black)) {
                 finishByGoal()
                 return
@@ -168,7 +195,7 @@ class LessGameViewModel(
         saved["FINISHED"] = true
         timer?.cancel()
         winner = current
-        log.appendLine("Fin por objetivo: ${current.name}")
+        recordLog("Fin por objetivo: ${current.name}")
     }
 
     /**
@@ -206,14 +233,16 @@ class LessGameViewModel(
             }
         }
         if (winner == null) isDraw = true
-        log.appendLine("Fin por tiempo; ganador=${winner?.name ?: "Empate"}")
+        recordLog("Fin por tiempo; ganador=${winner?.name ?: "Empate"}")
     }
 
-    /** Texto del log para el result */
-    val logText: String get() = log.toString()
+    /** Añade una línea al log y dispara el StateFlow */
+    private fun recordLog(line: String) {
+        _playLog.value = _playLog.value + line
+    }
 
     private data class IaMove(
-        val piece: Piece,
+        val piece: com.example.lessgame.domain.Piece,
         val dest: Coordinate,
         val cost: Int,
         val score: Int

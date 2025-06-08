@@ -2,10 +2,13 @@ package com.example.lessgame.ui.screens
 
 import android.content.Intent
 import android.content.res.Configuration
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,12 +26,12 @@ import androidx.core.net.toUri
 
 @OptIn(ExperimentalMaterial3Api::class)
 /**
- * Muestra la pantalla de resultados:
- * Fecha y hora de finalización
- * Historial de movimientos (log)
- * Resultado final (victoria, derrota o empate)
- * Formulario para enviar el log por e-mail
- * Botones para nueva partida o salir
+ * Pantalla de resultados:
+ * - Fecha y hora de finalización
+ * - Historial de movimientos
+ * - Resultado (victoria, derrota o empate)
+ * - Envío de e-mail
+ * - Nueva partida o salir
  */
 @Composable
 fun ResultScreen(
@@ -44,6 +47,7 @@ fun ResultScreen(
 
     var email by remember { mutableStateOf("") }
 
+    // Texto del resultado final
     val resultText = when {
         vm.isDraw                -> "¡Empate!"
         vm.winner == Player.White -> "¡Has ganado!"
@@ -52,7 +56,16 @@ fun ResultScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("RESULTADOS PARTIDA") }) }
+        topBar = {
+            TopAppBar(
+                title = { Text("Resultado partida") },
+                actions = {
+                    IconButton(onClick = { nav.navigate(NavDest.Config.route) }) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Configuración")
+                    }
+                }
+            )
+        }
     ) { padding ->
         Column(
             Modifier
@@ -144,15 +157,14 @@ fun ResultScreen(
                     ) { Text("Nueva partida") }
 
                     Button(
-                        onClick = { (context as? androidx.activity.ComponentActivity)?.finish() },
+                        onClick = { (context as? ComponentActivity)?.finish() },
                         modifier = Modifier.weight(1f)
                     ) { Text("Salir") }
                 }
 
             } else {
                 Column(
-                    Modifier
-                        .fillMaxSize(),
+                    Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
                     Text("Día y hora")
@@ -197,21 +209,15 @@ fun ResultScreen(
                         Button(
                             onClick = {
                                 if (email.isNotBlank()) {
-                                    val subject =
-                                        "Resultados LESS ${dateTime.format(dateFormatter)}"
-                                    val body = vm.logText
-                                    val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                    val subject = "Resultados LESS ${dateTime.format(dateFormatter)}"
+                                    val body    = vm.logText
+                                    val intent  = Intent(Intent.ACTION_SENDTO).apply {
                                         data = "mailto:".toUri()
                                         putExtra(Intent.EXTRA_EMAIL, arrayOf(email))
                                         putExtra(Intent.EXTRA_SUBJECT, subject)
                                         putExtra(Intent.EXTRA_TEXT, body)
                                     }
-                                    context.startActivity(
-                                        Intent.createChooser(
-                                            intent,
-                                            "Enviar e-mail…"
-                                        )
-                                    )
+                                    context.startActivity(Intent.createChooser(intent, "Enviar e-mail…"))
                                 }
                             },
                             modifier = Modifier.weight(1f)
@@ -228,13 +234,11 @@ fun ResultScreen(
                     }
                     Spacer(Modifier.height(12.dp))
                     Button(
-                        onClick = { (context as? androidx.activity.ComponentActivity)?.finish() },
+                        onClick = { (context as? ComponentActivity)?.finish() },
                         modifier = Modifier
                             .align(Alignment.CenterHorizontally)
                             .fillMaxWidth(0.6f)
-
                     ) { Text("Salir") }
-
                 }
             }
         }
